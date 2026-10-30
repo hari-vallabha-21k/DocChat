@@ -6,3 +6,5 @@ langchain-text-splitters
 langchain-chroma
 langchain-huggingface
 pypdf
+rank-bm25
+pytest
