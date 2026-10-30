@@ -55,8 +55,8 @@ data/pdfs/               # 3–5 public 10-K PDFs
 
 ## Phases
 0. Setup: repo + Codespace
-1. Ingest (rag.py) ← IN PROGRESS
-2. Retrieval: dense, bm25, rrf, rerank
+1. Ingest (rag.py) ← DONE
+2. Retrieval: dense, bm25, rrf, rerank ← NEXT
 3. Answers + citations
 4. Evaluation: test set + eval.py → eval/results.md
 5. API + UI
