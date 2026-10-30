@@ -73,7 +73,8 @@ data/pdfs/               # 3–5 public 10-K PDFs
 - Preference: build the code, don't teach, unless asked.
 - Phase 3 (answers): `answer()` + `ask` CLI in rag.py, `MIN_RERANK_SCORE` refusal (default 0, tune from the eval), 3 tests. Needs a Codespace run with `LLM_MODEL` set.
 - Phase 4 (eval): `eval/test_queries.json` has 48 questions (28 numeric, 9 rare-token, 7 prose, 4 unanswerable), gold pages checked against the PDF text; `page` may be a list. `eval.py`: `python eval.py` (retrieval only, free), `--answers` (LLM), `--ragas` (pinned ragas==0.3.9, more LLM calls), `--limit N` smoke test. Writes eval/results.md, including a table that shows where to set `MIN_RERANK_SCORE`. 6 helper tests in test_eval.py pass locally with rag stubbed; not yet run in the Codespace. Both Tesla filings are in the corpus, so questions name the year.
-- Next: run Phase 3 + Phase 4 in the Codespace, tune `MIN_RERANK_SCORE`, decide the deferred retrieval changes from the numbers.
+- Phase 4 result (Colab CPU, 1897 chunks after the header change; baseline in eval/results_baseline.md): hit@5 / MRR dense 48%→77% / 0.28→0.49, bm25 77%→82% / 0.50→0.55, hybrid 68%→82% / 0.45→0.58, hybrid+rerank 73%→77% / 0.58→0.60 (p50 about 2.6 s). The header gave dense +29 points. Rerank has the best MRR but no recall gain over hybrid (the 5-point gap is 2 of 44 questions, noise). Baseline refusal check: no `MIN_RERANK_SCORE` separates unanswerable from answerable (unanswerable max 7.61 > answerable p10 1.83), so unanswerable handling must come from the LLM prompt; measure with `--answers`.
+- Next: `python eval.py --answers --limit 5` with the Gemini key, then the full `--answers` and `--ragas` runs; decide `MIN_RERANK_SCORE` (probably a low floor) from the new results.md threshold section; then the Phase 3/4 end-of-phase sequence.
 
 ## Setup
 ```bash
