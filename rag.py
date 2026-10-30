@@ -144,6 +144,12 @@ def _llm():
     return init_chat_model(os.environ["LLM_MODEL"], temperature=0, timeout=30, max_retries=2)
 
 
+def _text(msg) -> str:
+    """Reply text; some providers (Gemini 3.x) return a list of content blocks instead of a string."""
+    c = msg.content
+    return c if isinstance(c, str) else "".join(b if isinstance(b, str) else b.get("text", "") for b in c)
+
+
 def _citations(text: str, hits: list[dict]) -> list[dict]:
     """Passages the answer cites as [n]; numbers outside 1..len(hits) are dropped."""
     nums = sorted({int(n) for n in re.findall(r"\[(\d+)\]", text)})
@@ -158,7 +164,7 @@ def answer(question: str, mode: str = "hybrid", use_rerank: bool = True, k: int 
         text, citations = NO_ANSWER, []
     else:
         context = "\n\n".join(f"[{i}] ({h['filename']} p{h['page']})\n{h['text']}" for i, h in enumerate(hits, 1))
-        text = _llm().invoke([("system", SYSTEM), ("human", f"Context:\n{context}\n\nQuestion: {question}")]).content
+        text = _text(_llm().invoke([("system", SYSTEM), ("human", f"Context:\n{context}\n\nQuestion: {question}")]))
         citations = _citations(text, hits)
     return {"answer": text, "citations": citations, "latency_ms": int((time.perf_counter() - t0) * 1000),
             "contexts": [h["text"] for h in hits]}  # for eval.py (RAGAS); the API layer leaves it out

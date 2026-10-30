@@ -91,3 +91,12 @@ def test_answer_calls_llm_and_returns_citations(monkeypatch):
     monkeypatch.setattr(rag, "_llm", lambda: Stub())
     out = rag.answer("q")
     assert out["citations"][0]["page"] == 4 and "[1]" in out["answer"]
+
+
+def test_text_joins_content_blocks_and_passes_plain_strings():
+    class Blocks:
+        content = [{"type": "text", "text": "Rev [1]"}, " tail"]
+    class Plain:
+        content = "plain"
+    assert rag._text(Blocks()) == "Rev [1] tail"
+    assert rag._text(Plain()) == "plain"
