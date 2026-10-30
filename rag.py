@@ -24,9 +24,9 @@ tokenizer = AutoTokenizer.from_pretrained(MODEL)
 embeddings = HuggingFaceEmbeddings(model_name=MODEL, encode_kwargs={"normalize_embeddings": True})
 store = Chroma("docchat", embeddings, persist_directory="chroma",
                collection_metadata={"hnsw:space": "cosine"})  # cosine, same as the Colab experiment
-# 250, not 256: the model adds 2 special tokens ([CLS], [SEP]) to every input
+# 240, not 256: the model adds 2 special tokens ([CLS], [SEP]) and ingest() prepends a ~10-token "[tesla 10k 2025]" header
 splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
-    tokenizer, chunk_size=250, chunk_overlap=32)
+    tokenizer, chunk_size=240, chunk_overlap=32)
 
 _index: tuple[BM25Okapi, list[dict]] | None = None  # (index, its chunks), one value so readers never see a mismatch; reset by ingest()
 
@@ -38,8 +38,10 @@ def ingest(path: str) -> int:
     chunks = splitter.split_documents(pages)
     if not chunks:
         raise ValueError(f"{path}: no extractable text")
+    header = Path(path).stem.replace("-", " ").replace("_", " ")[:40]  # 10-K chunks rarely name the company or year
     for c in chunks:
         c.metadata.update(doc_id=doc_id, filename=Path(path).name, page=c.metadata["page"] + 1)
+        c.page_content = f"[{header}] {c.page_content}"
     ids = [f"{doc_id}-{i}" for i in range(len(chunks))]
     store.delete(where={"filename": Path(path).name})  # drop stale chunks of an edited/re-chunked file
     store.add_documents(chunks, ids=ids)  # same ids -> same rows, count stays flat

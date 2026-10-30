@@ -23,7 +23,7 @@ Don't write a phase's code for me unless I ask. Keep explanations simple.
 - API: FastAPI. UI: Streamlit. Docker Compose. Public demo on Hugging Face Spaces.
 
 ## Decisions (and why)
-- Chunks: 250 tokens, 32 overlap, counted with MiniLM's tokenizer. MiniLM silently drops text after 256 tokens; 250 + 2 special tokens fits.
+- Chunks: 240 tokens, 32 overlap, counted with MiniLM's tokenizer. MiniLM silently drops text after 256 tokens; 240 + ~10 header tokens + 2 special tokens fits. Every chunk is stored as `[<filename stem>] text` (e.g. `[tesla 10k 2025] ...`) so dense and BM25 can tell companies and years apart. Added after the baseline eval (eval/results_baseline.md: dense 48%, bm25 77%, hybrid 68%, rerank 73% hit@5); compare eval/results.md after re-ingest.
 - Chunk id `{doc_id}-{i}`, doc_id = sha256(file bytes)[:12], so re-ingesting the same file changes nothing.
 - Page numbers stored 1-based (PyPDFLoader starts at 0).
 - RRF written by hand: score = Σ 1/(60 + rank). Hybrid = RRF(dense top 20, BM25 top 20). Rerank top 20 → keep 5.
