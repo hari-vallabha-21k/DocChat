@@ -1,0 +1,8 @@
+# Install CPU-only torch first:  pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Phase 1 only. Add packages as each phase needs them; pin versions (pip freeze) once Phase 1 works.
+sentence-transformers
+langchain-community
+langchain-text-splitters
+langchain-chroma
+langchain-huggingface
+pypdf
