@@ -57,8 +57,8 @@ data/pdfs/               # 3–5 public 10-K PDFs
 0. Setup: repo + Codespace
 1. Ingest (rag.py) ← DONE
 2. Retrieval: dense, bm25, rrf, rerank ← DONE
-3. Answers + citations ← NEXT
-4. Evaluation: test set + eval.py → eval/results.md
+3. Answers + citations ← code pushed, not yet run in the Codespace
+4. Evaluation: test set + eval.py → eval/results.md ← IN PROGRESS (code pushed, not yet run)
 5. API + UI
 6. Docker + README (Mermaid diagram, results table, design decisions)
 7. Optional: Hugging Face Spaces
@@ -71,7 +71,9 @@ data/pdfs/               # 3–5 public 10-K PDFs
   - Experiment: dense beats BM25 on "What was Tesla's total revenue in 2024?" (BM25 returns Apple pages: common words, no company name in chunk text). BM25 beats dense on "Cybertruck" (dense returns cybersecurity/Nike). Rerank fixed the first but pushed the Cybertruck page to rank 3.
   - Deferred to the Phase 4 eval (decide with numbers): fuse rerank order with the hybrid order via rrf (fifth mode); prepend filename to chunk text (needs re-ingest); stopword filter in `_tokens`; `min_score` for unanswerable questions (needed in Phase 3); `Hit` TypedDict and `rank` field (Phase 5). Eval slices: rare-token, company-specific numeric, unanswerable. Call `_reranker()` before timing so p95 excludes model load.
 - Preference: build the code, don't teach, unless asked.
-- Next: Phase 3 (answers + citations).
+- Phase 3 (answers): `answer()` + `ask` CLI in rag.py, `MIN_RERANK_SCORE` refusal (default 0, tune from the eval), 3 tests. Needs a Codespace run with `LLM_MODEL` set.
+- Phase 4 (eval): `eval/test_queries.json` has 48 questions (28 numeric, 9 rare-token, 7 prose, 4 unanswerable), gold pages checked against the PDF text; `page` may be a list. `eval.py`: `python eval.py` (retrieval only, free), `--answers` (LLM), `--ragas` (pinned ragas==0.3.9, more LLM calls), `--limit N` smoke test. Writes eval/results.md, including a table that shows where to set `MIN_RERANK_SCORE`. 6 helper tests in test_eval.py pass locally with rag stubbed; not yet run in the Codespace. Both Tesla filings are in the corpus, so questions name the year.
+- Next: run Phase 3 + Phase 4 in the Codespace, tune `MIN_RERANK_SCORE`, decide the deferred retrieval changes from the numbers.
 
 ## Setup
 ```bash

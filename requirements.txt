@@ -10,4 +10,5 @@ rank-bm25
 langchain
 langchain-openai
 # Gemini swap: also pip install langchain-google-genai, set LLM_MODEL=google_genai:gemini-2.5-flash
+ragas==0.3.9  # pinned: the API changes between releases (0.4.x moved to new LLM wrappers)
 pytest

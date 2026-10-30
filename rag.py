@@ -158,7 +158,8 @@ def answer(question: str, mode: str = "hybrid", use_rerank: bool = True, k: int 
         context = "\n\n".join(f"[{i}] ({h['filename']} p{h['page']})\n{h['text']}" for i, h in enumerate(hits, 1))
         text = _llm().invoke([("system", SYSTEM), ("human", f"Context:\n{context}\n\nQuestion: {question}")]).content
         citations = _citations(text, hits)
-    return {"answer": text, "citations": citations, "latency_ms": int((time.perf_counter() - t0) * 1000)}
+    return {"answer": text, "citations": citations, "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "contexts": [h["text"] for h in hits]}  # for eval.py (RAGAS); the API layer leaves it out
 
 
 if __name__ == "__main__":
