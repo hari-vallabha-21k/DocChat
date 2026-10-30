@@ -28,7 +28,8 @@ def ingest(path: str) -> int:
     for c in chunks:
         c.metadata.update(doc_id=doc_id, filename=Path(path).name, page=c.metadata["page"] + 1)
     ids = [f"{doc_id}-{i}" for i in range(len(chunks))]
-    store.add_documents(chunks, ids=ids)  # upsert: same ids overwrite, count stays flat
+    store.delete(where={"filename": Path(path).name})  # drop stale chunks of an edited/re-chunked file
+    store.add_documents(chunks, ids=ids)  # same ids -> same rows, count stays flat
     return len(chunks)
 
 
