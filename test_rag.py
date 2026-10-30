@@ -65,3 +65,29 @@ def test_rerank_empty_input_does_not_load_model(monkeypatch):
 def test_search_rejects_unknown_mode():
     with pytest.raises(ValueError, match="mode"):
         rag.search("q", mode="nope")
+
+
+def test_citations_dedupe_and_drop_out_of_range():
+    hits = [hit("a", "t1", page=3), hit("b", "t2", page=7)]
+    out = rag._citations("Rev was X [2][1]. Also [2] and [9] and [0].", hits)
+    assert [(c["n"], c["page"]) for c in out] == [(1, 3), (2, 7)]
+
+
+def test_answer_refuses_below_min_score_without_calling_llm(monkeypatch):
+    monkeypatch.setattr(rag, "search", lambda *a, **k: [{**hit("a"), "score": -9.0}])
+    monkeypatch.setattr(rag, "_llm", lambda: pytest.fail("llm called"))
+    out = rag.answer("q")
+    assert out["answer"] == rag.NO_ANSWER and out["citations"] == []
+
+
+def test_answer_calls_llm_and_returns_citations(monkeypatch):
+    class Msg:
+        content = "Revenue was $97.7B [1]."
+    class Stub:
+        def invoke(self, messages):
+            assert "[1] (f.pdf p4)" in messages[1][1]
+            return Msg()
+    monkeypatch.setattr(rag, "search", lambda *a, **k: [{**hit("a", page=4), "score": 5.0}])
+    monkeypatch.setattr(rag, "_llm", lambda: Stub())
+    out = rag.answer("q")
+    assert out["citations"][0]["page"] == 4 and "[1]" in out["answer"]

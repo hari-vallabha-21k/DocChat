@@ -1,10 +1,13 @@
-# Phase 1: ingest (python rag.py data/pdfs). Phase 2: retrieval (python rag.py search "question").
+# Phase 1: ingest (python rag.py data/pdfs). Phase 2: retrieval (python rag.py search "question"). Phase 3: python rag.py ask "question".
 import functools
 import hashlib
+import os
 import re
 import sys
+import time
 from pathlib import Path
 
+from langchain.chat_models import init_chat_model
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -121,10 +124,53 @@ def search(query: str, mode: str = "hybrid", use_rerank: bool = True, k: int = 5
     return rerank(query, candidates, k) if use_rerank else candidates[:k]
 
 
+# ---- Phase 3: answers with [n] citations. ----
+
+NO_ANSWER = "I can't find this in the documents."
+# cross-encoder logits: relevant chunks score well above 0, unrelated ones go strongly negative. Tune in Phase 4 on the unanswerable slice.
+MIN_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0"))
+SYSTEM = (
+    "Answer the question using ONLY the numbered context passages. "
+    "Cite every claim with the passage number in square brackets, like [1] or [2][3]. "
+    f"If the passages do not contain the answer, reply exactly: {NO_ANSWER}"
+)
+
+
+@functools.cache
+def _llm():
+    # LLM_MODEL like "openai:gpt-4o-mini" or "google_genai:gemini-2.5-flash"
+    return init_chat_model(os.environ["LLM_MODEL"], temperature=0, timeout=30, max_retries=2)
+
+
+def _citations(text: str, hits: list[dict]) -> list[dict]:
+    """Passages the answer cites as [n]; numbers outside 1..len(hits) are dropped."""
+    nums = sorted({int(n) for n in re.findall(r"\[(\d+)\]", text)})
+    return [{"n": n, "doc_id": h["doc_id"], "filename": h["filename"], "page": h["page"], "snippet": h["text"][:200]}
+            for n in nums if 1 <= n <= len(hits) for h in [hits[n - 1]]]
+
+
+def answer(question: str, mode: str = "hybrid", use_rerank: bool = True, k: int = 5) -> dict:
+    t0 = time.perf_counter()
+    hits = search(question, mode, use_rerank, k)
+    if not hits or (use_rerank and hits[0]["score"] < MIN_SCORE):  # score is only comparable after rerank
+        text, citations = NO_ANSWER, []
+    else:
+        context = "\n\n".join(f"[{i}] ({h['filename']} p{h['page']})\n{h['text']}" for i, h in enumerate(hits, 1))
+        text = _llm().invoke([("system", SYSTEM), ("human", f"Context:\n{context}\n\nQuestion: {question}")]).content
+        citations = _citations(text, hits)
+    return {"answer": text, "citations": citations, "latency_ms": int((time.perf_counter() - t0) * 1000)}
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or (sys.argv[1] == "search" and len(sys.argv) != 3):
-        sys.exit('usage: rag.py <pdf_dir> | rag.py search "question"')
-    if sys.argv[1] == "search":  # python rag.py search "question"
+    if len(sys.argv) < 2 or (sys.argv[1] in ("search", "ask") and len(sys.argv) != 3):
+        sys.exit('usage: rag.py <pdf_dir> | rag.py search "question" | rag.py ask "question"')
+    if sys.argv[1] == "ask":  # python rag.py ask "question"
+        r = answer(sys.argv[2])
+        print(r["answer"])
+        for c in r["citations"]:
+            print(f"  [{c['n']}] {c['filename']} p{c['page']}: {c['snippet'][:80]!r}")
+        print(f"({r['latency_ms']} ms)")
+    elif sys.argv[1] == "search":  # python rag.py search "question"
         for mode, use_rerank in [("dense", False), ("bm25", False), ("hybrid", False), ("hybrid", True)]:
             print(f"\n== {mode}{' + rerank' if use_rerank else ''} ==")
             for h in search(sys.argv[2], mode, use_rerank):
