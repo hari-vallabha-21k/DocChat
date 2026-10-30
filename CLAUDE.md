@@ -56,8 +56,8 @@ data/pdfs/               # 3–5 public 10-K PDFs
 ## Phases
 0. Setup: repo + Codespace
 1. Ingest (rag.py) ← DONE
-2. Retrieval: dense, bm25, rrf, rerank ← NEXT
-3. Answers + citations
+2. Retrieval: dense, bm25, rrf, rerank ← DONE
+3. Answers + citations ← NEXT
 4. Evaluation: test set + eval.py → eval/results.md
 5. API + UI
 6. Docker + README (Mermaid diagram, results table, design decisions)
@@ -66,15 +66,12 @@ data/pdfs/               # 3–5 public 10-K PDFs
 ## Progress
 - Lesson 0 (what RAG is; retrieval failures vs generation failures): done.
 - Lesson 1 (embeddings, cosine similarity, truncation, chunk size): done. Corrected two misconceptions: text past 256 tokens is dropped, not moved to another chunk; "context window" (LLM limit) is not "max sequence length" (embedder limit). I needed help on why a chunk shouldn't be one sentence or a whole page.
-- Next: I fill the 5 TODOs in rag.py. Before running I predict (A) how many chunks a 100-page PDF makes and (B) whether running twice doubles the Chroma count. Then I run `python rag.py data/pdfs` plus the check below, and you review.
-
-```python
-from rag import store, tokenizer
-r = store.get(include=["documents", "metadatas"])
-print(len(r["ids"]), "chunks total")
-print(r["metadatas"][0])                                        # doc_id, filename, page
-print(max(len(tokenizer.tokenize(d)) for d in r["documents"]))  # should be <= 250
-```
+- Phase 1 (ingest): DONE. 4 PDFs, 1824 chunks, max 250 tokens. Known limits: same bytes under two filenames (last wins); encrypted/corrupt PDFs crash the CLI loop (map to 422 in the API); models load at import of rag.py.
+- Phase 2 (retrieval): DONE. dense, bm25, rrf, hybrid, rerank, search() in rag.py; 9 tests pass in the Codespace; all 4 modes return sensible pages. Reviews fixed: BM25 index+corpus are one `_index` tuple (thread-safe reads), RRF key includes page, CLI usage guard.
+  - Experiment: dense beats BM25 on "What was Tesla's total revenue in 2024?" (BM25 returns Apple pages: common words, no company name in chunk text). BM25 beats dense on "Cybertruck" (dense returns cybersecurity/Nike). Rerank fixed the first but pushed the Cybertruck page to rank 3.
+  - Deferred to the Phase 4 eval (decide with numbers): fuse rerank order with the hybrid order via rrf (fifth mode); prepend filename to chunk text (needs re-ingest); stopword filter in `_tokens`; `min_score` for unanswerable questions (needed in Phase 3); `Hit` TypedDict and `rank` field (Phase 5). Eval slices: rare-token, company-specific numeric, unanswerable. Call `_reranker()` before timing so p95 excludes model load.
+- Preference: build the code, don't teach, unless asked.
+- Next: Phase 3 (answers + citations).
 
 ## Setup
 ```bash

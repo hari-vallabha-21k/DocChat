@@ -25,12 +25,11 @@ store = Chroma("docchat", embeddings, persist_directory="chroma",
 splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
     tokenizer, chunk_size=250, chunk_overlap=32)
 
-_bm25: BM25Okapi | None = None  # built lazily from Chroma; reset by ingest()
-_corpus: list[dict] = []
+_index: tuple[BM25Okapi, list[dict]] | None = None  # (index, its chunks), one value so readers never see a mismatch; reset by ingest()
 
 
 def ingest(path: str) -> int:
-    global _bm25
+    global _index
     doc_id = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:12]
     pages = PyPDFLoader(path).load()
     chunks = splitter.split_documents(pages)
@@ -41,7 +40,7 @@ def ingest(path: str) -> int:
     ids = [f"{doc_id}-{i}" for i in range(len(chunks))]
     store.delete(where={"filename": Path(path).name})  # drop stale chunks of an edited/re-chunked file
     store.add_documents(chunks, ids=ids)  # same ids -> same rows, count stays flat
-    _bm25 = None  # BM25 index is stale now
+    _index = None  # BM25 index is stale now
     return len(chunks)
 
 
@@ -53,7 +52,7 @@ def _hit(text: str, meta: dict, score: float) -> dict:
 
 
 def _key(hit: dict) -> tuple:
-    return (hit["doc_id"], hit["text"])
+    return (hit["doc_id"], hit["page"], hit["text"])  # page: identical boilerplate on two pages stays two hits
 
 
 def _tokens(text: str) -> list[str]:
@@ -66,22 +65,23 @@ def dense(query: str, k: int = TOP_N) -> list[dict]:
             for d, dist in store.similarity_search_with_score(query, k=k)]
 
 
-def build_bm25() -> None:
-    global _bm25, _corpus
+def build_bm25() -> tuple[BM25Okapi, list[dict]] | None:
+    global _index
     r = store.get(include=["documents", "metadatas"])
-    _corpus = [_hit(d, m, 0.0) for d, m in zip(r["documents"], r["metadatas"])]
-    _bm25 = BM25Okapi([_tokens(h["text"]) for h in _corpus]) if _corpus else None  # rank_bm25 divides by zero on empty
+    corpus = [_hit(d, m, 0.0) for d, m in zip(r["documents"], r["metadatas"])]
+    _index = (BM25Okapi([_tokens(h["text"]) for h in corpus]), corpus) if corpus else None  # rank_bm25 divides by zero on empty
+    return _index
 
 
 def bm25(query: str, k: int = TOP_N) -> list[dict]:
-    if _bm25 is None:
-        build_bm25()
+    idx = _index or build_bm25()  # read the global once; ingest() may reset it concurrently
     q = _tokens(query)
-    if _bm25 is None or not q:
+    if idx is None or not q:
         return []
-    scores = _bm25.get_scores(q)
+    model, corpus = idx
+    scores = model.get_scores(q)
     top = sorted(range(len(scores)), key=scores.__getitem__, reverse=True)[:k]
-    return [{**_corpus[i], "score": float(scores[i])} for i in top if scores[i] > 0]
+    return [{**corpus[i], "score": float(scores[i])} for i in top if scores[i] > 0]
 
 
 def rrf(rankings: list[list[dict]], k: int = RRF_K) -> list[dict]:
@@ -122,6 +122,8 @@ def search(query: str, mode: str = "hybrid", use_rerank: bool = True, k: int = 5
 
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2 or (sys.argv[1] == "search" and len(sys.argv) != 3):
+        sys.exit('usage: rag.py <pdf_dir> | rag.py search "question"')
     if sys.argv[1] == "search":  # python rag.py search "question"
         for mode, use_rerank in [("dense", False), ("bm25", False), ("hybrid", False), ("hybrid", True)]:
             print(f"\n== {mode}{' + rerank' if use_rerank else ''} ==")
