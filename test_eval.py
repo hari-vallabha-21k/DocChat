@@ -61,3 +61,18 @@ def test_answer_metrics_citation_and_refusal():
     assert m["citation"] == 0.5
     assert m["refused_answerable"] == 0.5
     assert m["refused_unanswerable"] == 1.0
+
+
+def test_misses_list_only_failures():
+    rows = [{"item": item(), "hits": [hit(page=1)], "ms": 0}, {"item": item(), "hits": [hit(page=3)], "ms": 0}]
+    out = ev.retrieval_misses(rows)
+    assert len(out) == 1 and "got a p1" in out[0]
+    arows = [{"item": item(), "answer": "x", "citations": [hit(page=2)], "latency_ms": 1}]
+    assert "cited a p2" in ev.citation_misses(arows)[0]
+
+
+def test_report_includes_miss_sections():
+    ret = {"hybrid": {"hit": 1, "mrr": 1, "p50": 1, "p95": 1, "by_type": {"numeric": 1}}}
+    thr = {"refused_unanswerable": 0, "refused_answerable": 0, "answerable_p10": 1, "unanswerable_max": 2}
+    out = ev.report([item()], ret, thr, {}, {}, {"hybrid": {"retrieval": ["- q1"], "answers": []}})
+    assert "## Retrieval misses (hybrid)" in out and "- q1" in out

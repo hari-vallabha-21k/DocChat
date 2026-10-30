@@ -82,6 +82,21 @@ def answer_metrics(rows: list[dict]) -> dict:
             "p50": pct(lat, 0.5), "p95": pct(lat, 0.95)}
 
 
+def _fmt(hits: list[dict]) -> str:
+    return ", ".join(f"{h['filename'].removesuffix('.pdf')} p{h['page']}" for h in hits)
+
+
+def retrieval_misses(rows: list[dict]) -> list[str]:
+    return [f"- {r['item']['question']} (gold {r['item']['source']} p{pages(r['item'])}); got {_fmt(r['hits'])}"
+            for r in rows if r["item"]["source"] and first_rank(r["hits"], r["item"]) is None]
+
+
+def citation_misses(rows: list[dict]) -> list[str]:
+    return [f"- {r['item']['question']} (gold {r['item']['source']} p{pages(r['item'])}); "
+            f"cited {_fmt(r['citations']) or 'nothing'}; answer: {r['answer'][:90]!r}"
+            for r in rows if r["item"]["source"] and not any(is_gold(c, r["item"]) for c in r["citations"])]
+
+
 def ragas_scores(rows: list[dict]) -> dict:
     # imports here so a plain `python eval.py` works without ragas installed
     from langchain.chat_models import init_chat_model
@@ -108,7 +123,7 @@ def md_table(header: list[str], body: list[list]) -> str:
     return "\n".join(lines + ["| " + " | ".join(map(str, row)) + " |" for row in body])
 
 
-def report(items, ret, thr, ans, ragas) -> str:
+def report(items, ret, thr, ans, ragas, misses) -> str:
     n_un = sum(not it["source"] for it in items)
     types = sorted({it["type"] for it in items} - {"unanswerable"})
     f = lambda x: f"{x:.0%}"  # noqa: E731
@@ -132,6 +147,10 @@ def report(items, ret, thr, ans, ragas) -> str:
         names = list(next(iter(ragas.values())))
         out += ["\n## RAGAS (answerable questions)\n",
                 md_table(["Mode"] + names, [[m] + [f"{v[n]:.3f}" for n in names] for m, v in ragas.items()])]
+    for label, m in misses.items():
+        for title, lines in (("Retrieval misses", m["retrieval"]), ("Citation misses", m["answers"])):
+            if lines:
+                out += [f"\n## {title} ({label})\n"] + lines
     return "\n".join(out) + "\n"
 
 
@@ -144,19 +163,23 @@ def main() -> None:
     items = json.loads(QUERIES.read_text(encoding="utf-8"))[: a.limit]
     rag.dense("warmup"), rag.bm25("warmup"), rag._reranker()  # keep model loading and index build out of the timings
 
-    ret, ans, ragas, rerank_rows = {}, {}, {}, []
+    ret, ans, ragas, misses, rerank_rows = {}, {}, {}, {}, []
     for label, mode, rerank in MODES:
         rows = retrieval_rows(items, mode, rerank)
         ret[label] = retrieval_metrics(rows)
+        if label.startswith("hybrid"):  # misses only for the two hybrid modes, to keep the report short
+            misses[label] = {"retrieval": retrieval_misses(rows), "answers": []}
         if rerank:
             rerank_rows = rows
         if a.answers or a.ragas:
             arows = answer_rows(items, mode, rerank)
             ans[label] = answer_metrics(arows)
+            if label in misses:
+                misses[label]["answers"] = citation_misses(arows)
             if a.ragas:
                 ragas[label] = ragas_scores([r for r in arows if r["item"]["source"]])
         print(label, ret[label])
-    OUT.write_text(report(items, ret, threshold_stats(rerank_rows), ans, ragas), encoding="utf-8")
+    OUT.write_text(report(items, ret, threshold_stats(rerank_rows), ans, ragas, misses), encoding="utf-8")
     print("wrote", OUT)
 
 
